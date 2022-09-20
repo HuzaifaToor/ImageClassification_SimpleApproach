@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from torchvision import datasets, transforms
 
+test_batch_size = 16
 #torch.load with map_location=torch.device('cpu')
 path = '/home/iuna/IUNA_AI/Classification/imagenet_myApproach'
 device = torch.device('cpu')
@@ -19,22 +20,23 @@ model.to(device)
 
 data_dir = os.path.join(path, 'DataSet', 'val')
 test_transforms = transforms.Compose([
-                transforms.Resize((224,224)),
-                transforms.ToTensor()
+                transforms.ToTensor(),
+                transforms.Resize((224,224))
                 ])
 
 
 def predict_image(image):
     image_tensor = test_transforms(image).float()
-    image_tensor = image_tensor.unsqueeze_(0)
-    #input = Variable(image_tensor)
-    input = image_tensor.to(device)
-    output = model(input)
-    #print(output)
-    index = output.data.cpu().numpy().argmax()
-    #index = output.data.numpy().argmax().to(device)
-    #print(index)
-    return index
+    #image_tensor = image_tensor.unsqueeze_(0)
+    image_tensor = image_tensor.view(1, 3, 224, 224)
+    with torch.no_grad():
+        input = image_tensor.to(device)
+        output = model(input)
+        probs = torch.nn.functional.softmax(output, dim=1)
+        conf, class_ = torch.max(probs, 1)
+        model_pred = output.data.cpu().numpy().argmax()
+
+    return model_pred, conf
 
 
 
@@ -56,38 +58,41 @@ def get_random_images(num):
 
 
 def predict_all_():
-    count = 0
+    worng_pred_count = 0
     to_pil = transforms.ToPILImage()
 
-    images, labels = get_random_images(32)
+    images, labels = get_random_images(16)
+    print("Plotting False Predictions!!!\n")
 
-    if os.path.exists(path + '/Scripts/class_list_updated2.txt'):
-        with open(path + '/Scripts/class_list_updated2.txt', 'r') as f:
+    #Reading the class label names
+    if os.path.exists(path + '/Scripts/class_names.txt'):
+        with open(path + '/Scripts/class_names.txt', 'r') as f:
             lines = f.readlines()
         
         lines = str(lines)
         dict_lines = eval(lines)
 
-        fig=plt.figure(figsize=(20,20))
+        #iterate over the batch_size for prediction
 
         for ii in range(len(images)):
             image = to_pil(images[ii])
-            index = predict_image(image)
+            model_pred, conf = predict_image(image)
             print("Ground Truth : ", str(labels[ii]), ", Prediction : ", index)
-            if index != labels[ii]:
-                count=count + 1
+            if model_pred != labels[ii]:
+                worng_pred_count=worng_pred_count + 1
 
-                truth = dict_lines[labels[ii]]
-                pred = dict_lines[index]
+                truth_labelName = dict_lines[labels[ii]]
+                pred_labelName = dict_lines[model_pred]
 
-                ground_truth = "True Label: " + str(truth)
-                model_prediction = "Model_ Pred: " + str(pred)
+                ground_truth = "True Label: " + str(truth_labelName)
+                model_prediction = "Model_ Pred: " + str(pred_labelName)
+                pred_score = str("Pred_Score: " + str('%.2f' % float(conf)))
 
-                plt.title(ground_truth+" "+ model_prediction)
+                plt.title(ground_truth+ " " + model_prediction + " " + pred_score)
                 plt.imshow(image)
-
                 plt.show()
-        print('Count for wrong Predictions: ', count)
+
+        print('Count for wrong Predictions: ', worng_pred_count)
 
 
 if __name__ == '__main__':
